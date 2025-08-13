@@ -10,6 +10,8 @@ const userRoutes = require('./routes/users');
 const crmRoutes = require('./routes/crm');
 const analyticsRoutes = require('./routes/analytics');
 const adsRoutes = require('./routes/ads');
+const aiRoutes = require('./routes/ai');
+const subscriptionRoutes = require('./routes/subscriptions');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,6 +48,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/crm', crmRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ads', adsRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -74,4 +78,3 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📱 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
-
