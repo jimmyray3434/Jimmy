@@ -125,7 +125,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
               <Button
                 mode="text"
-                onPress={() => {/* TODO: Implement forgot password */}}
+                onPress={() => navigation.navigate('ForgotPassword')}
                 style={styles.forgotButton}
               >
                 Forgot Password?
@@ -241,4 +241,3 @@ const styles = StyleSheet.create({
 });
 
 export default LoginScreen;
-

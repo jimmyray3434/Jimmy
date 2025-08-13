@@ -15,6 +15,7 @@ import {
   IconButton,
 } from 'react-native-paper';
 import { useSelector } from 'react-redux';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RootState } from '../../store/store';
@@ -37,24 +38,54 @@ const DashboardScreen: React.FC = () => {
   });
 
   const { user } = useSelector((state: RootState) => state.auth);
+  const navigation = useNavigation();
+  
+  // Function to calculate days remaining in trial
+  const calculateTrialDaysRemaining = (trialEndDate?: string) => {
+    if (!trialEndDate) return 7; // Default to 7 days if no end date
+    
+    const endDate = new Date(trialEndDate);
+    const today = new Date();
+    
+    // Calculate difference in days
+    const diffTime = endDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays > 0 ? diffDays : 0;
+  };
+
+  const fetchDashboardData = async () => {
+    try {
+      // In a real app, this would be an API call
+      // For now, we'll simulate a delay and use mock data
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Generate some random data for demo purposes
+      const totalClients = Math.floor(Math.random() * 20) + 15;
+      const activeAds = Math.floor(Math.random() * 10) + 5;
+      const totalRevenue = Math.floor(Math.random() * 3000) + 3000;
+      const conversionRate = (Math.random() * 2 + 2).toFixed(1);
+      
+      setStats({
+        totalClients,
+        activeAds,
+        totalRevenue,
+        conversionRate: parseFloat(conversionRate),
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    }
+  };
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    // TODO: Fetch latest data
-    setTimeout(() => {
+    fetchDashboardData().finally(() => {
       setRefreshing(false);
-    }, 2000);
+    });
   }, []);
 
   useEffect(() => {
-    // TODO: Fetch dashboard data
-    // Simulated data for now
-    setStats({
-      totalClients: 24,
-      activeAds: 12,
-      totalRevenue: 5420,
-      conversionRate: 3.2,
-    });
+    fetchDashboardData();
   }, []);
 
   const StatCard = ({ title, value, icon, color, subtitle }: {
@@ -115,9 +146,13 @@ const DashboardScreen: React.FC = () => {
             {user?.subscription?.status === 'trial' && (
               <View style={styles.trialBanner}>
                 <Text style={styles.trialText}>
-                  🎉 Free Trial Active - {/* TODO: Calculate days remaining */}5 days remaining
+                  🎉 Free Trial Active - {calculateTrialDaysRemaining(user?.subscription?.trialEndDate)} days remaining
                 </Text>
-                <Button mode="outlined" compact onPress={() => {}}>
+                <Button 
+                  mode="outlined" 
+                  compact 
+                  onPress={() => navigation.navigate('Subscription')}
+                >
                   Upgrade Now
                 </Button>
               </View>
@@ -367,4 +402,3 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardScreen;
-

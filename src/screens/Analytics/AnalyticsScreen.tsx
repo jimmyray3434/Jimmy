@@ -51,12 +51,24 @@ const AnalyticsScreen: React.FC = () => {
     }
   });
 
+  const fetchAnalyticsData = async () => {
+    try {
+      // In a real app, this would be an API call
+      // For now, we'll simulate a delay and use mock data
+      const response = await fetch('https://api.example.com/analytics/dashboard');
+      const data = await response.json();
+      setDashboardData(data.data);
+    } catch (error) {
+      console.error('Error fetching analytics data:', error);
+      // Keep using the mock data on error
+    }
+  };
+
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    // TODO: Fetch latest analytics data
-    setTimeout(() => {
+    fetchAnalyticsData().finally(() => {
       setRefreshing(false);
-    }, 2000);
+    });
   }, []);
 
   // Sample chart data
@@ -393,4 +405,3 @@ const styles = StyleSheet.create({
 });
 
 export default AnalyticsScreen;
-

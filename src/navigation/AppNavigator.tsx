@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { RootState } from '../store/store';
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
+import ForgotPasswordScreen from '../screens/Auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/Auth/ResetPasswordScreen';
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
 import CRMScreen from '../screens/CRM/CRMScreen';
 import AnalyticsScreen from '../screens/Analytics/AnalyticsScreen';
@@ -21,6 +23,8 @@ const AuthStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="Login" component={LoginScreen} />
     <Stack.Screen name="Register" component={RegisterScreen} />
+    <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+    <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
   </Stack.Navigator>
 );
 

@@ -225,9 +225,42 @@ router.post('/forgot-password', [
     user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await user.save();
 
-    // TODO: Send email with reset link
-    // For now, we'll just log it (in production, integrate with email service)
-    console.log(`Password reset token for ${email}: ${resetToken}`);
+    // Send email with reset link using nodemailer
+    try {
+      const transporter = require('nodemailer').createTransport({
+        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+        port: process.env.EMAIL_PORT || 587,
+        secure: process.env.EMAIL_PORT === '465',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      });
+
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:19006';
+      const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Password Reset - AI Ad Platform',
+        html: `
+          <h1>Password Reset Request</h1>
+          <p>You requested a password reset for your AI Ad Platform account.</p>
+          <p>Please click the link below to reset your password:</p>
+          <a href="${resetUrl}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
+          <p>This link will expire in 1 hour.</p>
+          <p>If you didn't request this, please ignore this email and your password will remain unchanged.</p>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`Password reset email sent to ${email}`);
+    } catch (emailError) {
+      // Log the error but don't expose it to the client
+      console.error('Email sending error:', emailError);
+      // We still return success to prevent email enumeration attacks
+    }
 
     res.json({
       success: true,
@@ -362,4 +395,3 @@ router.post('/refresh', auth, async (req, res) => {
 });
 
 module.exports = router;
-
