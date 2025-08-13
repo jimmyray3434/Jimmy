@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { 
   Card, 
@@ -12,14 +12,22 @@ import {
 } from 'react-native-paper';
 import { useSelector, useDispatch } from 'react-redux';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 
 import { RootState, AppDispatch } from '../../store/store';
 import { logoutUser } from '../../store/slices/authSlice';
+import { fetchCurrentSubscription } from '../../store/slices/subscriptionSlice';
 import { theme } from '../../theme/theme';
 
 const ProfileScreen: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const navigation = useNavigation();
   const { user } = useSelector((state: RootState) => state.auth);
+  const { subscription } = useSelector((state: RootState) => state.subscription);
+
+  useEffect(() => {
+    dispatch(fetchCurrentSubscription());
+  }, [dispatch]);
 
   const handleLogout = async () => {
     try {
@@ -27,6 +35,10 @@ const ProfileScreen: React.FC = () => {
     } catch (error) {
       console.error('Logout error:', error);
     }
+  };
+  
+  const navigateToSubscription = () => {
+    navigation.navigate('Subscription' as never);
   };
 
   return (
@@ -46,13 +58,13 @@ const ProfileScreen: React.FC = () => {
             {/* Subscription Status */}
             <View style={styles.subscriptionBadge}>
               <Text style={styles.subscriptionText}>
-                {user?.subscription?.status === 'trial' ? '🎉 Free Trial' : 
-                 user?.subscription?.status === 'active' ? '✅ Premium' : '❌ Inactive'}
+                {subscription?.status === 'trial' ? '🎉 Free Trial' : 
+                 subscription?.status === 'active' ? '✅ Premium' : '❌ Inactive'}
               </Text>
-              {user?.subscription?.status === 'trial' && (
+              {subscription?.status === 'trial' && (
                 <Text style={styles.trialText}>
-                  Expires: {user?.subscription?.expiresAt ? 
-                    new Date(user.subscription.expiresAt).toLocaleDateString() : 'N/A'}
+                  Expires: {subscription?.trialEndDate ? 
+                    new Date(subscription.trialEndDate).toLocaleDateString() : 'N/A'}
                 </Text>
               )}
             </View>
@@ -79,7 +91,7 @@ const ProfileScreen: React.FC = () => {
               description="Manage your subscription plan"
               left={(props) => <List.Icon {...props} icon="credit-card" />}
               right={(props) => <List.Icon {...props} icon="chevron-right" />}
-              onPress={() => {}}
+              onPress={navigateToSubscription}
             />
             
             <Divider />
@@ -238,4 +250,3 @@ const styles = StyleSheet.create({
 });
 
 export default ProfileScreen;
-

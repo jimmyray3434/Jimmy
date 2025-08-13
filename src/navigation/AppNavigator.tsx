@@ -12,6 +12,7 @@ import CRMScreen from '../screens/CRM/CRMScreen';
 import AnalyticsScreen from '../screens/Analytics/AnalyticsScreen';
 import AdsScreen from '../screens/Ads/AdsScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
+import SubscriptionScreen from '../screens/Subscription/SubscriptionScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -41,6 +42,9 @@ const MainTabs = () => (
             break;
           case 'Analytics':
             iconName = focused ? 'analytics' : 'analytics-outline';
+            break;
+          case 'Subscription':
+            iconName = focused ? 'card' : 'card-outline';
             break;
           case 'Profile':
             iconName = focused ? 'person' : 'person-outline';
@@ -84,6 +88,11 @@ const MainTabs = () => (
       options={{ title: 'Analytics' }}
     />
     <Tab.Screen 
+      name="Subscription" 
+      component={SubscriptionScreen}
+      options={{ title: 'Subscription' }}
+    />
+    <Tab.Screen 
       name="Profile" 
       component={ProfileScreen}
       options={{ title: 'Profile' }}
@@ -106,4 +115,3 @@ const AppNavigator = () => {
 };
 
 export default AppNavigator;
-
