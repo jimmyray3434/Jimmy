@@ -3,6 +3,8 @@ import authSlice from './slices/authSlice';
 import crmSlice from './slices/crmSlice';
 import analyticsSlice from './slices/analyticsSlice';
 import adsSlice from './slices/adsSlice';
+import aiSlice from './slices/aiSlice';
+import subscriptionSlice from './slices/subscriptionSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +12,8 @@ export const store = configureStore({
     crm: crmSlice,
     analytics: analyticsSlice,
     ads: adsSlice,
+    ai: aiSlice,
+    subscription: subscriptionSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -21,4 +25,3 @@ export const store = configureStore({
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
-
