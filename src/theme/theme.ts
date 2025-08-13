@@ -5,14 +5,19 @@ export const theme = {
   colors: {
     ...DefaultTheme.colors,
     primary: '#2196F3',
+    primaryLight: '#E3F2FD',
     secondary: '#03DAC6',
     tertiary: '#FF9800',
     surface: '#FFFFFF',
     background: '#F5F5F5',
     error: '#F44336',
+    errorBackground: '#FFEBEE',
     success: '#4CAF50',
+    successBackground: '#E8F5E9',
     warning: '#FF9800',
+    warningBackground: '#FFF3E0',
     info: '#2196F3',
+    infoBackground: '#E3F2FD',
     text: '#212121',
     textSecondary: '#757575',
     border: '#E0E0E0',
@@ -81,4 +86,3 @@ export const theme = {
     },
   },
 };
-

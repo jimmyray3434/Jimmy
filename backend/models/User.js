@@ -1,35 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-const subscriptionSchema = new mongoose.Schema({
-  status: {
-    type: String,
-    enum: ['trial', 'active', 'inactive', 'cancelled'],
-    default: 'trial'
-  },
-  plan: {
-    type: String,
-    default: 'premium'
-  },
-  startDate: {
-    type: Date,
-    default: Date.now
-  },
-  expiresAt: {
-    type: Date,
-    default: function() {
-      // 7 days from now for trial
-      return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    }
-  },
-  paypalSubscriptionId: String,
-  lastPaymentDate: Date,
-  nextPaymentDate: Date,
-  amount: {
-    type: Number,
-    default: 30
-  }
-});
+// Subscription schema moved to separate model
 
 const userSchema = new mongoose.Schema({
   name: {
@@ -57,9 +29,9 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
-  subscription: {
-    type: subscriptionSchema,
-    default: () => ({})
+  subscriptionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Subscription'
   },
   profile: {
     avatar: String,
@@ -109,7 +81,7 @@ const userSchema = new mongoose.Schema({
 
 // Indexes
 userSchema.index({ email: 1 });
-userSchema.index({ 'subscription.status': 1 });
+userSchema.index({ subscriptionId: 1 });
 userSchema.index({ createdAt: -1 });
 
 // Virtual for account lock status
@@ -137,10 +109,15 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 // Method to check if subscription is active
-userSchema.methods.hasActiveSubscription = function() {
-  const now = new Date();
-  return this.subscription.status === 'active' || 
-         (this.subscription.status === 'trial' && this.subscription.expiresAt > now);
+userSchema.methods.hasActiveSubscription = async function() {
+  if (!this.subscriptionId) return false;
+  
+  const Subscription = mongoose.model('Subscription');
+  const subscription = await Subscription.findById(this.subscriptionId);
+  
+  if (!subscription) return false;
+  
+  return subscription.isActive;
 };
 
 // Method to increment login attempts
@@ -202,4 +179,3 @@ userSchema.statics.findByCredentials = async function(email, password) {
 };
 
 module.exports = mongoose.model('User', userSchema);
-
