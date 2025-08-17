@@ -8,59 +8,66 @@ const ContentSchema = new mongoose.Schema({
   },
   title: {
     type: String,
-    required: [true, 'Please add a title'],
-    trim: true,
-    maxlength: [200, 'Title cannot be more than 200 characters']
+    required: true,
+    trim: true
   },
   type: {
     type: String,
-    enum: ['blog', 'social', 'product-review', 'ebook', 'email'],
-    required: [true, 'Please specify content type']
+    enum: ['blog-post', 'article', 'social-post', 'product-review', 'email', 'landing-page'],
+    required: true
   },
   status: {
     type: String,
-    enum: ['draft', 'published', 'scheduled', 'archived'],
+    enum: ['draft', 'published', 'archived'],
     default: 'draft'
   },
-  niche: {
-    type: String,
-    required: [true, 'Please specify a niche']
-  },
-  keywords: [String],
   content: {
     type: String,
-    required: [true, 'Please add content']
+    required: true
   },
-  summary: String,
-  seoTitle: String,
-  seoDescription: String,
-  featuredImage: String,
-  publishDate: Date,
-  platforms: [{
-    name: {
-      type: String,
-      enum: ['website', 'medium', 'wordpress', 'facebook', 'twitter', 'instagram', 'linkedin'],
-      required: true
-    },
-    status: {
-      type: String,
-      enum: ['pending', 'published', 'failed'],
-      default: 'pending'
-    },
-    publishedUrl: String,
-    publishedDate: Date,
-    error: String
-  }],
-  affiliateLinks: [{
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'AffiliateProduct'
-    },
-    network: String,
-    url: String,
-    anchor: String,
-    position: String,
-    impressions: {
+  description: {
+    type: String,
+    trim: true
+  },
+  featuredImage: {
+    type: String
+  },
+  url: {
+    type: String,
+    trim: true
+  },
+  keywords: {
+    type: [String],
+    default: []
+  },
+  targetAudience: {
+    type: [String],
+    default: []
+  },
+  categories: {
+    type: [String],
+    default: []
+  },
+  tags: {
+    type: [String],
+    default: []
+  },
+  seoTitle: {
+    type: String,
+    trim: true
+  },
+  seoDescription: {
+    type: String,
+    trim: true
+  },
+  publishedAt: {
+    type: Date
+  },
+  lastTrafficGeneration: {
+    type: Date
+  },
+  performance: {
+    views: {
       type: Number,
       default: 0
     },
@@ -76,62 +83,122 @@ const ContentSchema = new mongoose.Schema({
       type: Number,
       default: 0
     }
-  }],
-  performance: {
-    views: {
-      type: Number,
-      default: 0
-    },
-    uniqueVisitors: {
-      type: Number,
-      default: 0
-    },
-    averageTimeOnPage: {
-      type: Number,
-      default: 0
-    },
-    bounceRate: {
-      type: Number,
-      default: 0
-    },
-    socialShares: {
-      type: Number,
-      default: 0
-    },
-    comments: {
-      type: Number,
-      default: 0
-    },
-    conversionRate: {
-      type: Number,
-      default: 0
-    },
-    revenue: {
-      type: Number,
-      default: 0
-    }
   },
-  generationPrompt: String,
-  generationSettings: {
-    model: String,
-    temperature: Number,
-    maxTokens: Number
+  aiGenerated: {
+    type: Boolean,
+    default: false
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  aiPrompt: {
+    type: String
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  aiModel: {
+    type: String
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   }
+}, {
+  timestamps: true
 });
 
-// Set updatedAt before saving
-ContentSchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  next();
+// Indexes for faster queries
+ContentSchema.index({ user: 1, createdAt: -1 });
+ContentSchema.index({ user: 1, status: 1 });
+ContentSchema.index({ user: 1, type: 1 });
+ContentSchema.index({ user: 1, keywords: 1 });
+ContentSchema.index({ user: 1, tags: 1 });
+ContentSchema.index({ user: 1, 'performance.views': -1 });
+
+// Virtual for content age in days
+ContentSchema.virtual('ageInDays').get(function() {
+  return Math.floor((new Date() - this.createdAt) / (1000 * 60 * 60 * 24));
 });
+
+// Virtual for days since publication
+ContentSchema.virtual('daysSincePublication').get(function() {
+  if (!this.publishedAt) return null;
+  return Math.floor((new Date() - this.publishedAt) / (1000 * 60 * 60 * 24));
+});
+
+// Method to check if content is published
+ContentSchema.methods.isPublished = function() {
+  return this.status === 'published';
+};
+
+// Method to publish content
+ContentSchema.methods.publish = async function() {
+  this.status = 'published';
+  this.publishedAt = new Date();
+  await this.save();
+  return this;
+};
+
+// Method to archive content
+ContentSchema.methods.archive = async function() {
+  this.status = 'archived';
+  await this.save();
+  return this;
+};
+
+// Method to update performance metrics
+ContentSchema.methods.updatePerformance = async function(metrics) {
+  if (metrics.views !== undefined) {
+    this.performance.views += metrics.views;
+  }
+  
+  if (metrics.clicks !== undefined) {
+    this.performance.clicks += metrics.clicks;
+  }
+  
+  if (metrics.conversions !== undefined) {
+    this.performance.conversions += metrics.conversions;
+  }
+  
+  if (metrics.revenue !== undefined) {
+    this.performance.revenue += metrics.revenue;
+  }
+  
+  await this.save();
+  return this;
+};
+
+// Static method to find content by keyword
+ContentSchema.statics.findByKeyword = function(userId, keyword) {
+  return this.find({ user: userId, keywords: keyword });
+};
+
+// Static method to find content by tag
+ContentSchema.statics.findByTag = function(userId, tag) {
+  return this.find({ user: userId, tags: tag });
+};
+
+// Static method to find content by type
+ContentSchema.statics.findByType = function(userId, type) {
+  return this.find({ user: userId, type });
+};
+
+// Static method to find top performing content
+ContentSchema.statics.findTopPerforming = function(userId, metric = 'views', limit = 10) {
+  return this.find({ user: userId, status: 'published' })
+    .sort({ [`performance.${metric}`]: -1 })
+    .limit(limit);
+};
+
+// Static method to find content due for traffic generation
+ContentSchema.statics.findDueForTrafficGeneration = function(userId, hours = 24) {
+  const cutoffDate = new Date();
+  cutoffDate.setHours(cutoffDate.getHours() - hours);
+  
+  return this.find({
+    user: userId,
+    status: 'published',
+    $or: [
+      { lastTrafficGeneration: { $lt: cutoffDate } },
+      { lastTrafficGeneration: { $exists: false } }
+    ]
+  });
+};
 
 module.exports = mongoose.model('Content', ContentSchema);
 

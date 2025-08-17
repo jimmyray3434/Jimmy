@@ -1,114 +1,123 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import contentService from '../../services/contentService';
+import api from '../../services/api';
 
-// Get all content
-export const getContent = createAsyncThunk(
-  'content/getAll',
-  async (params, thunkAPI) => {
+// Async thunks
+export const fetchContent = createAsyncThunk(
+  'content/fetchContent',
+  async (params = {}, { rejectWithValue }) => {
     try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.getContent(params, token);
+      const response = await api.get('/content', { params });
+      return response.data;
     } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
+      return rejectWithValue(error.response?.data?.error || 'Failed to fetch content');
     }
   }
 );
 
-// Get content by ID
-export const getContentById = createAsyncThunk(
-  'content/getById',
-  async (id, thunkAPI) => {
+export const fetchContentById = createAsyncThunk(
+  'content/fetchContentById',
+  async (contentId, { rejectWithValue }) => {
     try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.getContentById(id, token);
+      const response = await api.get(`/content/${contentId}`);
+      return response.data;
     } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
+      return rejectWithValue(error.response?.data?.error || 'Failed to fetch content');
     }
   }
 );
 
-// Create content
 export const createContent = createAsyncThunk(
-  'content/create',
-  async (contentData, thunkAPI) => {
+  'content/createContent',
+  async (contentData, { rejectWithValue }) => {
     try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.createContent(contentData, token);
+      const response = await api.post('/content', contentData);
+      return response.data;
     } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
+      return rejectWithValue(error.response?.data?.error || 'Failed to create content');
     }
   }
 );
 
-// Generate content with AI
-export const generateContent = createAsyncThunk(
-  'content/generate',
-  async (generationParams, thunkAPI) => {
-    try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.generateContent(generationParams, token);
-    } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
-    }
-  }
-);
-
-// Update content
 export const updateContent = createAsyncThunk(
-  'content/update',
-  async ({ id, contentData }, thunkAPI) => {
+  'content/updateContent',
+  async ({ contentId, updates }, { rejectWithValue }) => {
     try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.updateContent(id, contentData, token);
+      const response = await api.put(`/content/${contentId}`, updates);
+      return response.data;
     } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
+      return rejectWithValue(error.response?.data?.error || 'Failed to update content');
     }
   }
 );
 
-// Delete content
 export const deleteContent = createAsyncThunk(
-  'content/delete',
-  async (id, thunkAPI) => {
+  'content/deleteContent',
+  async (contentId, { rejectWithValue }) => {
     try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.deleteContent(id, token);
+      const response = await api.delete(`/content/${contentId}`);
+      return { ...response.data, contentId };
     } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
+      return rejectWithValue(error.response?.data?.error || 'Failed to delete content');
     }
   }
 );
 
-// Publish content
 export const publishContent = createAsyncThunk(
-  'content/publish',
-  async ({ id, publishData }, thunkAPI) => {
+  'content/publishContent',
+  async (contentId, { rejectWithValue }) => {
     try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.publishContent(id, publishData, token);
+      const response = await api.post(`/content/${contentId}/publish`);
+      return response.data;
     } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
+      return rejectWithValue(error.response?.data?.error || 'Failed to publish content');
     }
   }
 );
 
-// Schedule content
-export const scheduleContent = createAsyncThunk(
-  'content/schedule',
-  async ({ id, scheduleData }, thunkAPI) => {
+export const archiveContent = createAsyncThunk(
+  'content/archiveContent',
+  async (contentId, { rejectWithValue }) => {
     try {
-      const token = thunkAPI.getState().auth.token;
-      return await contentService.scheduleContent(id, scheduleData, token);
+      const response = await api.post(`/content/${contentId}/archive`);
+      return response.data;
     } catch (error) {
-      const message = error.response?.data?.error || error.message || error.toString();
-      return thunkAPI.rejectWithValue(message);
+      return rejectWithValue(error.response?.data?.error || 'Failed to archive content');
+    }
+  }
+);
+
+export const generateContent = createAsyncThunk(
+  'content/generateContent',
+  async (promptData, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/content/generate', promptData);
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || 'Failed to generate content');
+    }
+  }
+);
+
+export const generateTrafficForContent = createAsyncThunk(
+  'content/generateTrafficForContent',
+  async (contentId, { rejectWithValue }) => {
+    try {
+      const response = await api.post(`/content/${contentId}/generate-traffic`);
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || 'Failed to generate traffic');
+    }
+  }
+);
+
+export const fetchContentStats = createAsyncThunk(
+  'content/fetchContentStats',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/content/stats/performance');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || 'Failed to fetch content statistics');
     }
   }
 );
@@ -117,181 +126,229 @@ export const scheduleContent = createAsyncThunk(
 const initialState = {
   content: [],
   currentContent: null,
-  generatedContent: null,
-  isLoading: false,
-  isGenerating: false,
-  isSuccess: false,
-  isError: false,
-  message: '',
-  pagination: {
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0
-  }
+  contentStats: null,
+  pagination: null,
+  loading: false,
+  error: null,
 };
 
-// Create slice
+// Slice
 const contentSlice = createSlice({
   name: 'content',
   initialState,
   reducers: {
-    reset: (state) => {
-      state.isLoading = false;
-      state.isGenerating = false;
-      state.isSuccess = false;
-      state.isError = false;
-      state.message = '';
+    clearContentError: (state) => {
+      state.error = null;
     },
-    clearCurrentContent: (state) => {
-      state.currentContent = null;
-    },
-    clearGeneratedContent: (state) => {
-      state.generatedContent = null;
-    },
-    setPage: (state, action) => {
-      state.pagination.page = action.payload;
-    }
   },
   extraReducers: (builder) => {
     builder
-      // Get all content
-      .addCase(getContent.pending, (state) => {
-        state.isLoading = true;
+      // Fetch content
+      .addCase(fetchContent.pending, (state) => {
+        state.loading = true;
+        state.error = null;
       })
-      .addCase(getContent.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
+      .addCase(fetchContent.fulfilled, (state, action) => {
+        state.loading = false;
         state.content = action.payload.data;
-        state.pagination = {
-          page: action.payload.pagination.page,
-          limit: action.payload.pagination.limit,
-          total: action.payload.pagination.total,
-          totalPages: action.payload.pagination.totalPages
-        };
+        state.pagination = action.payload.pagination;
       })
-      .addCase(getContent.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
+      .addCase(fetchContent.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       })
-      // Get content by ID
-      .addCase(getContentById.pending, (state) => {
-        state.isLoading = true;
+      
+      // Fetch content by ID
+      .addCase(fetchContentById.pending, (state) => {
+        state.loading = true;
+        state.error = null;
       })
-      .addCase(getContentById.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
+      .addCase(fetchContentById.fulfilled, (state, action) => {
+        state.loading = false;
         state.currentContent = action.payload.data;
       })
-      .addCase(getContentById.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
+      .addCase(fetchContentById.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       })
+      
       // Create content
       .addCase(createContent.pending, (state) => {
-        state.isLoading = true;
+        state.loading = true;
+        state.error = null;
       })
       .addCase(createContent.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        state.content.unshift(action.payload.data);
-        state.currentContent = action.payload.data;
-        state.message = 'Content created successfully';
+        state.loading = false;
+        state.content = [action.payload.data, ...state.content];
       })
       .addCase(createContent.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
+        state.loading = false;
+        state.error = action.payload;
       })
-      // Generate content
-      .addCase(generateContent.pending, (state) => {
-        state.isGenerating = true;
-      })
-      .addCase(generateContent.fulfilled, (state, action) => {
-        state.isGenerating = false;
-        state.isSuccess = true;
-        state.generatedContent = action.payload.data;
-        state.message = 'Content generated successfully';
-      })
-      .addCase(generateContent.rejected, (state, action) => {
-        state.isGenerating = false;
-        state.isError = true;
-        state.message = action.payload;
-      })
+      
       // Update content
       .addCase(updateContent.pending, (state) => {
-        state.isLoading = true;
+        state.loading = true;
+        state.error = null;
       })
       .addCase(updateContent.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        state.content = state.content.map(item => 
-          item._id === action.payload.data._id ? action.payload.data : item
+        state.loading = false;
+        
+        // Update content in the list
+        const contentIndex = state.content.findIndex(
+          item => item._id === action.payload.data._id
         );
-        state.currentContent = action.payload.data;
-        state.message = 'Content updated successfully';
+        
+        if (contentIndex !== -1) {
+          state.content[contentIndex] = action.payload.data;
+        }
+        
+        // Update current content if it matches
+        if (state.currentContent && state.currentContent._id === action.payload.data._id) {
+          state.currentContent = action.payload.data;
+        }
       })
       .addCase(updateContent.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
+        state.loading = false;
+        state.error = action.payload;
       })
+      
       // Delete content
       .addCase(deleteContent.pending, (state) => {
-        state.isLoading = true;
+        state.loading = true;
+        state.error = null;
       })
       .addCase(deleteContent.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        state.content = state.content.filter(item => item._id !== action.payload.id);
-        state.message = 'Content deleted successfully';
+        state.loading = false;
+        
+        // Remove content from the list
+        state.content = state.content.filter(item => item._id !== action.payload.contentId);
+        
+        // Clear current content if it matches
+        if (state.currentContent && state.currentContent._id === action.payload.contentId) {
+          state.currentContent = null;
+        }
       })
       .addCase(deleteContent.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
+        state.loading = false;
+        state.error = action.payload;
       })
+      
       // Publish content
       .addCase(publishContent.pending, (state) => {
-        state.isLoading = true;
+        state.loading = true;
+        state.error = null;
       })
       .addCase(publishContent.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        state.content = state.content.map(item => 
-          item._id === action.payload.data._id ? action.payload.data : item
+        state.loading = false;
+        
+        // Update content in the list
+        const contentIndex = state.content.findIndex(
+          item => item._id === action.payload.data._id
         );
-        state.currentContent = action.payload.data;
-        state.message = 'Content published successfully';
+        
+        if (contentIndex !== -1) {
+          state.content[contentIndex] = action.payload.data;
+        }
+        
+        // Update current content if it matches
+        if (state.currentContent && state.currentContent._id === action.payload.data._id) {
+          state.currentContent = action.payload.data;
+        }
       })
       .addCase(publishContent.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
+        state.loading = false;
+        state.error = action.payload;
       })
-      // Schedule content
-      .addCase(scheduleContent.pending, (state) => {
-        state.isLoading = true;
+      
+      // Archive content
+      .addCase(archiveContent.pending, (state) => {
+        state.loading = true;
+        state.error = null;
       })
-      .addCase(scheduleContent.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        state.content = state.content.map(item => 
-          item._id === action.payload.data._id ? action.payload.data : item
+      .addCase(archiveContent.fulfilled, (state, action) => {
+        state.loading = false;
+        
+        // Update content in the list
+        const contentIndex = state.content.findIndex(
+          item => item._id === action.payload.data._id
         );
-        state.currentContent = action.payload.data;
-        state.message = 'Content scheduled successfully';
+        
+        if (contentIndex !== -1) {
+          state.content[contentIndex] = action.payload.data;
+        }
+        
+        // Update current content if it matches
+        if (state.currentContent && state.currentContent._id === action.payload.data._id) {
+          state.currentContent = action.payload.data;
+        }
       })
-      .addCase(scheduleContent.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
+      .addCase(archiveContent.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      
+      // Generate content
+      .addCase(generateContent.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(generateContent.fulfilled, (state, action) => {
+        state.loading = false;
+        state.content = [action.payload.data, ...state.content];
+        state.currentContent = action.payload.data;
+      })
+      .addCase(generateContent.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      
+      // Generate traffic for content
+      .addCase(generateTrafficForContent.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(generateTrafficForContent.fulfilled, (state, action) => {
+        state.loading = false;
+        
+        // Update content in the list if it exists
+        if (action.payload.data && action.payload.data.content) {
+          const contentIndex = state.content.findIndex(
+            item => item._id === action.payload.data.content._id
+          );
+          
+          if (contentIndex !== -1) {
+            state.content[contentIndex] = action.payload.data.content;
+          }
+          
+          // Update current content if it matches
+          if (state.currentContent && state.currentContent._id === action.payload.data.content._id) {
+            state.currentContent = action.payload.data.content;
+          }
+        }
+      })
+      .addCase(generateTrafficForContent.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      
+      // Fetch content stats
+      .addCase(fetchContentStats.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchContentStats.fulfilled, (state, action) => {
+        state.loading = false;
+        state.contentStats = action.payload.data;
+      })
+      .addCase(fetchContentStats.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       });
-  }
+  },
 });
 
-export const { reset, clearCurrentContent, clearGeneratedContent, setPage } = contentSlice.actions;
+export const { clearContentError } = contentSlice.actions;
+
 export default contentSlice.reducer;
 
