@@ -1,23 +1,23 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer from './slices/authSlice';
+import paymentReducer from './slices/paymentSlice';
+import trafficReducer from './slices/trafficSlice';
+import crmReducer from './slices/crmSlice';
 import contentReducer from './slices/contentSlice';
-import affiliateReducer from './slices/affiliateSlice';
-import productReducer from './slices/productSlice';
-import analyticsReducer from './slices/analyticsSlice';
-import automationReducer from './slices/automationSlice';
 
-export const store = configureStore({
+const store = configureStore({
   reducer: {
     auth: authReducer,
-    content: contentReducer,
-    affiliate: affiliateReducer,
-    product: productReducer,
-    analytics: analyticsReducer,
-    automation: automationReducer,
+    payment: paymentReducer,
+    traffic: trafficReducer,
+    crm: crmReducer,
+    content: contentReducer
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: false,
-    }),
+      serializableCheck: false
+    })
 });
+
+export default store;
 
