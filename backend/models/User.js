@@ -1,55 +1,25 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
-const subscriptionSchema = new mongoose.Schema({
-  status: {
-    type: String,
-    enum: ['trial', 'active', 'inactive', 'cancelled'],
-    default: 'trial'
-  },
-  plan: {
-    type: String,
-    default: 'premium'
-  },
-  startDate: {
-    type: Date,
-    default: Date.now
-  },
-  expiresAt: {
-    type: Date,
-    default: function() {
-      // 7 days from now for trial
-      return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    }
-  },
-  paypalSubscriptionId: String,
-  lastPaymentDate: Date,
-  nextPaymentDate: Date,
-  amount: {
-    type: Number,
-    default: 30
-  }
-});
-
-const userSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Name is required'],
-    trim: true,
-    maxlength: [50, 'Name cannot be more than 50 characters']
+    required: [true, 'Please add a name']
   },
   email: {
     type: String,
-    required: [true, 'Email is required'],
+    required: [true, 'Please add an email'],
     unique: true,
-    lowercase: true,
-    trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+    match: [
+      /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
+      'Please add a valid email'
+    ]
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters'],
+    required: [true, 'Please add a password'],
+    minlength: 6,
     select: false
   },
   role: {
@@ -57,149 +27,75 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
-  subscription: {
-    type: subscriptionSchema,
-    default: () => ({})
+  apiKeys: {
+    openai: String,
+    stripe: String,
+    amazonAffiliateId: String,
+    shareasaleApiToken: String,
+    shareasaleAffiliateId: String
   },
-  profile: {
-    avatar: String,
-    phone: String,
-    company: String,
-    website: String,
-    bio: String
-  },
-  preferences: {
-    notifications: {
-      email: { type: Boolean, default: true },
-      push: { type: Boolean, default: true },
-      sms: { type: Boolean, default: false }
+  settings: {
+    contentGeneration: {
+      targetNiche: String,
+      contentTypes: [String],
+      publishingFrequency: String,
+      qualityLevel: {
+        type: Number,
+        default: 0.7,
+        min: 0.1,
+        max: 1.0
+      }
     },
-    theme: {
-      type: String,
-      enum: ['light', 'dark', 'auto'],
-      default: 'light'
+    affiliate: {
+      networks: [String],
+      productCategories: [String],
+      minCommissionRate: Number
     },
-    language: {
-      type: String,
-      default: 'en'
+    digitalProducts: {
+      productTypes: [String],
+      priceRange: {
+        min: Number,
+        max: Number
+      },
+      autoGenerate: Boolean
+    },
+    automation: {
+      scheduleActive: {
+        type: Boolean,
+        default: true
+      },
+      contentSchedule: String,
+      affiliateUpdateSchedule: String,
+      analyticsSchedule: String
     }
   },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  isEmailVerified: {
-    type: Boolean,
-    default: false
-  },
-  emailVerificationToken: String,
-  passwordResetToken: String,
-  passwordResetExpires: Date,
-  lastLogin: Date,
-  loginAttempts: {
-    type: Number,
-    default: 0
-  },
-  lockUntil: Date
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
 });
 
-// Indexes
-userSchema.index({ email: 1 });
-userSchema.index({ 'subscription.status': 1 });
-userSchema.index({ createdAt: -1 });
-
-// Virtual for account lock status
-userSchema.virtual('isLocked').get(function() {
-  return !!(this.lockUntil && this.lockUntil > Date.now());
-});
-
-// Pre-save middleware to hash password
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  
-  try {
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
+// Encrypt password using bcrypt
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
     next();
-  } catch (error) {
-    next(error);
   }
+
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Method to compare password
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  if (!this.password) return false;
-  return await bcrypt.compare(candidatePassword, this.password);
-};
-
-// Method to check if subscription is active
-userSchema.methods.hasActiveSubscription = function() {
-  const now = new Date();
-  return this.subscription.status === 'active' || 
-         (this.subscription.status === 'trial' && this.subscription.expiresAt > now);
-};
-
-// Method to increment login attempts
-userSchema.methods.incLoginAttempts = function() {
-  // If we have a previous lock that has expired, restart at 1
-  if (this.lockUntil && this.lockUntil < Date.now()) {
-    return this.updateOne({
-      $unset: { lockUntil: 1 },
-      $set: { loginAttempts: 1 }
-    });
-  }
-  
-  const updates = { $inc: { loginAttempts: 1 } };
-  
-  // Lock account after 5 failed attempts for 2 hours
-  if (this.loginAttempts + 1 >= 5 && !this.isLocked) {
-    updates.$set = { lockUntil: Date.now() + 2 * 60 * 60 * 1000 };
-  }
-  
-  return this.updateOne(updates);
-};
-
-// Method to reset login attempts
-userSchema.methods.resetLoginAttempts = function() {
-  return this.updateOne({
-    $unset: { loginAttempts: 1, lockUntil: 1 }
+// Sign JWT and return
+UserSchema.methods.getSignedJwtToken = function() {
+  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE
   });
 };
 
-// Static method to find user by email with password
-userSchema.statics.findByCredentials = async function(email, password) {
-  const user = await this.findOne({ email, isActive: true }).select('+password');
-  
-  if (!user) {
-    throw new Error('Invalid credentials');
-  }
-  
-  if (user.isLocked) {
-    throw new Error('Account temporarily locked due to too many failed login attempts');
-  }
-  
-  const isMatch = await user.comparePassword(password);
-  
-  if (!isMatch) {
-    await user.incLoginAttempts();
-    throw new Error('Invalid credentials');
-  }
-  
-  // Reset login attempts on successful login
-  if (user.loginAttempts > 0) {
-    await user.resetLoginAttempts();
-  }
-  
-  // Update last login
-  user.lastLogin = new Date();
-  await user.save();
-  
-  return user;
+// Match user entered password to hashed password in database
+UserSchema.methods.matchPassword = async function(enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', UserSchema);
 
