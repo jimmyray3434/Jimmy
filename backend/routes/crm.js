@@ -1,529 +1,823 @@
 const express = require('express');
-const { body, validationResult, query } = require('express-validator');
-const Client = require('../models/Client');
-const { auth, requireActiveSubscription } = require('../middleware/auth');
-
 const router = express.Router();
+const { protect } = require('../middleware/auth');
+const crmService = require('../services/crmService');
+const Lead = require('../models/Lead');
+const Contact = require('../models/Contact');
+const Automation = require('../models/Automation');
+const EmailTemplate = require('../models/EmailTemplate');
 
-// Apply auth and subscription check to all routes
-router.use(auth);
-router.use(requireActiveSubscription);
-
-// @route   GET /api/crm/clients
-// @desc    Get all clients for the authenticated user
-// @access  Private
-router.get('/clients', [
-  query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
-  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
-  query('status').optional().isIn(['lead', 'prospect', 'active', 'inactive', 'lost']).withMessage('Invalid status'),
-  query('search').optional().isLength({ min: 1 }).withMessage('Search query cannot be empty')
-], async (req, res) => {
+/**
+ * @route   GET /api/crm/leads
+ * @desc    Get user's leads
+ * @access  Private
+ */
+router.get('/leads', protect, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const { status, search } = req.query;
-
-    let query = { assignedTo: req.user.userId, isActive: true };
-
-    // Add status filter
-    if (status) {
-      query.status = status;
-    }
-
-    // Add search filter
-    if (search) {
-      const searchRegex = new RegExp(search, 'i');
-      query.$or = [
-        { name: searchRegex },
-        { email: searchRegex },
-        { company: searchRegex },
-        { phone: searchRegex }
-      ];
-    }
-
-    const clients = await Client.find(query)
-      .populate('assignedTo', 'name email')
-      .sort({ updatedAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await Client.countDocuments(query);
-
-    // Calculate summary statistics
-    const stats = await Client.aggregate([
-      { $match: { assignedTo: req.user.userId, isActive: true } },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          totalValue: { $sum: '$totalSpent' }
-        }
-      }
-    ]);
-
-    res.json({
-      success: true,
-      clients,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      },
-      stats
-    });
-
-  } catch (error) {
-    console.error('Get clients error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-});
-
-// @route   GET /api/crm/clients/:id
-// @desc    Get a specific client
-// @access  Private
-router.get('/clients/:id', async (req, res) => {
-  try {
-    const client = await Client.findOne({
-      _id: req.params.id,
-      assignedTo: req.user.userId,
-      isActive: true
-    })
-    .populate('assignedTo', 'name email')
-    .populate('communications.createdBy', 'name')
-    .populate('notes.createdBy', 'name');
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      client
-    });
-
-  } catch (error) {
-    console.error('Get client error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-});
-
-// @route   POST /api/crm/clients
-// @desc    Create a new client
-// @access  Private
-router.post('/clients', [
-  body('name')
-    .trim()
-    .isLength({ min: 2, max: 100 })
-    .withMessage('Name must be between 2 and 100 characters'),
-  body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please enter a valid email'),
-  body('phone')
-    .optional()
-    .isMobilePhone()
-    .withMessage('Please enter a valid phone number'),
-  body('company')
-    .optional()
-    .trim()
-    .isLength({ max: 100 })
-    .withMessage('Company name cannot exceed 100 characters'),
-  body('status')
-    .optional()
-    .isIn(['lead', 'prospect', 'active', 'inactive', 'lost'])
-    .withMessage('Invalid status'),
-  body('source')
-    .optional()
-    .isIn(['website', 'referral', 'social_media', 'advertising', 'cold_outreach', 'event', 'other'])
-    .withMessage('Invalid source')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    // Check if client with this email already exists for this user
-    const existingClient = await Client.findOne({
-      email: req.body.email,
-      assignedTo: req.user.userId,
-      isActive: true
-    });
-
-    if (existingClient) {
-      return res.status(400).json({
-        success: false,
-        message: 'Client with this email already exists'
-      });
-    }
-
-    const clientData = {
-      ...req.body,
-      assignedTo: req.user.userId,
-      createdBy: req.user.userId
+    const { page = 1, limit = 10, status, source, search } = req.query;
+    
+    const options = {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      status,
+      source,
+      search
     };
-
-    const client = new Client(clientData);
-    await client.save();
-
-    await client.populate('assignedTo', 'name email');
-
-    res.status(201).json({
-      success: true,
-      message: 'Client created successfully',
-      client
-    });
-
-  } catch (error) {
-    console.error('Create client error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-});
-
-// @route   PUT /api/crm/clients/:id
-// @desc    Update a client
-// @access  Private
-router.put('/clients/:id', [
-  body('name')
-    .optional()
-    .trim()
-    .isLength({ min: 2, max: 100 })
-    .withMessage('Name must be between 2 and 100 characters'),
-  body('email')
-    .optional()
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please enter a valid email'),
-  body('phone')
-    .optional()
-    .isMobilePhone()
-    .withMessage('Please enter a valid phone number'),
-  body('status')
-    .optional()
-    .isIn(['lead', 'prospect', 'active', 'inactive', 'lost'])
-    .withMessage('Invalid status')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    const client = await Client.findOne({
-      _id: req.params.id,
-      assignedTo: req.user.userId,
-      isActive: true
-    });
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client not found'
-      });
-    }
-
-    // Check if email is being changed and if it's already taken
-    if (req.body.email && req.body.email !== client.email) {
-      const existingClient = await Client.findOne({
-        email: req.body.email,
-        assignedTo: req.user.userId,
-        isActive: true,
-        _id: { $ne: req.params.id }
-      });
-
-      if (existingClient) {
-        return res.status(400).json({
-          success: false,
-          message: 'Another client with this email already exists'
-        });
-      }
-    }
-
-    // Update allowed fields
-    const allowedUpdates = [
-      'name', 'email', 'phone', 'company', 'website', 'address',
-      'industry', 'companySize', 'annualRevenue', 'status', 'source',
-      'totalSpent', 'averageOrderValue', 'lifetimeValue', 'nextFollowUpDate',
-      'tags', 'customFields'
-    ];
-
-    const updates = {};
-    Object.keys(req.body).forEach(key => {
-      if (allowedUpdates.includes(key)) {
-        updates[key] = req.body[key];
-      }
-    });
-
-    const updatedClient = await Client.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    ).populate('assignedTo', 'name email');
-
+    
+    const leads = await crmService.getUserLeads(req.user.id, options);
+    
     res.json({
       success: true,
-      message: 'Client updated successfully',
-      client: updatedClient
+      data: leads.data,
+      pagination: leads.pagination
     });
-
   } catch (error) {
-    console.error('Update client error:', error);
+    console.error('Error fetching leads:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      error: error.message || 'Server error'
     });
   }
 });
 
-// @route   DELETE /api/crm/clients/:id
-// @desc    Delete a client (soft delete)
-// @access  Private
-router.delete('/clients/:id', async (req, res) => {
+/**
+ * @route   GET /api/crm/leads/:id
+ * @desc    Get lead by ID
+ * @access  Private
+ */
+router.get('/leads/:id', protect, async (req, res) => {
   try {
-    const client = await Client.findOne({
-      _id: req.params.id,
-      assignedTo: req.user.userId,
-      isActive: true
-    });
-
-    if (!client) {
-      return res.status(404).json({
+    const lead = await crmService.getLeadById(req.params.id);
+    
+    // Check if lead belongs to user
+    if (lead.user.toString() !== req.user.id) {
+      return res.status(403).json({
         success: false,
-        message: 'Client not found'
+        error: 'Not authorized to access this lead'
       });
     }
-
-    client.isActive = false;
-    await client.save();
-
+    
     res.json({
       success: true,
-      message: 'Client deleted successfully'
+      data: lead
     });
-
   } catch (error) {
-    console.error('Delete client error:', error);
-    res.status(500).json({
+    console.error('Error fetching lead:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
       success: false,
-      message: 'Server error'
+      error: error.message || 'Server error'
     });
   }
 });
 
-// @route   POST /api/crm/clients/:id/communications
-// @desc    Add communication to a client
-// @access  Private
-router.post('/clients/:id/communications', [
-  body('type')
-    .isIn(['email', 'phone', 'meeting', 'note', 'task'])
-    .withMessage('Invalid communication type'),
-  body('subject')
-    .trim()
-    .isLength({ min: 1, max: 200 })
-    .withMessage('Subject must be between 1 and 200 characters'),
-  body('description')
-    .optional()
-    .trim()
-    .isLength({ max: 1000 })
-    .withMessage('Description cannot exceed 1000 characters'),
-  body('scheduledDate')
-    .optional()
-    .isISO8601()
-    .withMessage('Please provide a valid date'),
-  body('priority')
-    .optional()
-    .isIn(['low', 'medium', 'high', 'urgent'])
-    .withMessage('Invalid priority level')
-], async (req, res) => {
+/**
+ * @route   POST /api/crm/leads
+ * @desc    Create new lead
+ * @access  Private
+ */
+router.post('/leads', protect, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
+    const { name, email, phone, company, source, tags, notes, customFields, autoConvert } = req.body;
+    
+    if (!name || !email) {
       return res.status(400).json({
         success: false,
-        message: 'Validation failed',
-        errors: errors.array()
+        error: 'Name and email are required'
       });
     }
-
-    const client = await Client.findOne({
-      _id: req.params.id,
-      assignedTo: req.user.userId,
-      isActive: true
-    });
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client not found'
-      });
-    }
-
-    const communicationData = {
-      ...req.body,
-      createdBy: req.user.userId
+    
+    // Create lead data
+    const leadData = {
+      user: req.user.id,
+      name,
+      email,
+      phone,
+      company,
+      source,
+      tags,
+      notes,
+      customFields,
+      autoConvert
     };
-
-    await client.addCommunication(communicationData);
-
+    
+    const lead = await crmService.createLead(leadData);
+    
     res.status(201).json({
       success: true,
-      message: 'Communication added successfully',
-      client
+      data: lead,
+      message: 'Lead created successfully'
     });
-
   } catch (error) {
-    console.error('Add communication error:', error);
+    console.error('Error creating lead:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      error: error.message || 'Server error'
     });
   }
 });
 
-// @route   POST /api/crm/clients/:id/notes
-// @desc    Add note to a client
-// @access  Private
-router.post('/clients/:id/notes', [
-  body('content')
-    .trim()
-    .isLength({ min: 1, max: 1000 })
-    .withMessage('Note content must be between 1 and 1000 characters')
-], async (req, res) => {
+/**
+ * @route   PUT /api/crm/leads/:id
+ * @desc    Update lead
+ * @access  Private
+ */
+router.put('/leads/:id', protect, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    const client = await Client.findOne({
-      _id: req.params.id,
-      assignedTo: req.user.userId,
-      isActive: true
-    });
-
-    if (!client) {
+    const lead = await Lead.findById(req.params.id);
+    
+    if (!lead) {
       return res.status(404).json({
         success: false,
-        message: 'Client not found'
+        error: 'Lead not found'
       });
     }
-
-    await client.addNote(req.body.content, req.user.userId);
-
-    res.status(201).json({
+    
+    // Check if lead belongs to user
+    if (lead.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update this lead'
+      });
+    }
+    
+    const updatedLead = await crmService.updateLead(req.params.id, req.body);
+    
+    res.json({
       success: true,
-      message: 'Note added successfully',
-      client
+      data: updatedLead,
+      message: 'Lead updated successfully'
     });
-
   } catch (error) {
-    console.error('Add note error:', error);
-    res.status(500).json({
+    console.error('Error updating lead:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
       success: false,
-      message: 'Server error'
+      error: error.message || 'Server error'
     });
   }
 });
 
-// @route   GET /api/crm/dashboard
-// @desc    Get CRM dashboard data
-// @access  Private
-router.get('/dashboard', async (req, res) => {
+/**
+ * @route   DELETE /api/crm/leads/:id
+ * @desc    Delete lead
+ * @access  Private
+ */
+router.delete('/leads/:id', protect, async (req, res) => {
   try {
-    const userId = req.user.userId;
-
-    // Get client statistics
-    const clientStats = await Client.aggregate([
-      { $match: { assignedTo: userId, isActive: true } },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          totalValue: { $sum: '$totalSpent' }
-        }
-      }
-    ]);
-
-    // Get overdue follow-ups
-    const overdueFollowUps = await Client.find({
-      assignedTo: userId,
-      nextFollowUpDate: { $lt: new Date() },
-      isActive: true
-    }).countDocuments();
-
-    // Get recent communications
-    const recentCommunications = await Client.aggregate([
-      { $match: { assignedTo: userId, isActive: true } },
-      { $unwind: '$communications' },
-      { $sort: { 'communications.createdAt': -1 } },
-      { $limit: 10 },
-      {
-        $project: {
-          clientName: '$name',
-          communication: '$communications'
-        }
-      }
-    ]);
-
-    // Get top clients by value
-    const topClients = await Client.find({
-      assignedTo: userId,
-      isActive: true
-    })
-    .sort({ totalSpent: -1 })
-    .limit(5)
-    .select('name company totalSpent');
-
+    const lead = await Lead.findById(req.params.id);
+    
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: 'Lead not found'
+      });
+    }
+    
+    // Check if lead belongs to user
+    if (lead.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this lead'
+      });
+    }
+    
+    await crmService.deleteLead(req.params.id);
+    
     res.json({
       success: true,
-      dashboard: {
-        clientStats,
-        overdueFollowUps,
-        recentCommunications,
-        topClients
-      }
+      message: 'Lead deleted successfully'
     });
-
   } catch (error) {
-    console.error('Get CRM dashboard error:', error);
+    console.error('Error deleting lead:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/crm/leads/:id/convert
+ * @desc    Convert lead to contact
+ * @access  Private
+ */
+router.post('/leads/:id/convert', protect, async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id);
+    
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: 'Lead not found'
+      });
+    }
+    
+    // Check if lead belongs to user
+    if (lead.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to convert this lead'
+      });
+    }
+    
+    // Check if lead is already converted
+    if (lead.status === 'converted') {
+      return res.status(400).json({
+        success: false,
+        error: 'Lead is already converted'
+      });
+    }
+    
+    const contact = await crmService.convertLeadToContact(req.params.id);
+    
+    res.json({
+      success: true,
+      data: contact,
+      message: 'Lead converted to contact successfully'
+    });
+  } catch (error) {
+    console.error('Error converting lead:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/crm/leads/:id/activity
+ * @desc    Add activity to lead
+ * @access  Private
+ */
+router.post('/leads/:id/activity', protect, async (req, res) => {
+  try {
+    const { type, description, metadata } = req.body;
+    
+    if (!type || !description) {
+      return res.status(400).json({
+        success: false,
+        error: 'Type and description are required'
+      });
+    }
+    
+    const lead = await Lead.findById(req.params.id);
+    
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: 'Lead not found'
+      });
+    }
+    
+    // Check if lead belongs to user
+    if (lead.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to add activity to this lead'
+      });
+    }
+    
+    // Add activity
+    const activity = {
+      type,
+      description,
+      createdAt: new Date(),
+      metadata: metadata || {}
+    };
+    
+    const updatedLead = await lead.addActivity(activity);
+    
+    res.json({
+      success: true,
+      data: updatedLead,
+      message: 'Activity added successfully'
+    });
+  } catch (error) {
+    console.error('Error adding activity:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/crm/contacts
+ * @desc    Get user's contacts
+ * @access  Private
+ */
+router.get('/contacts', protect, async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, tags, search } = req.query;
+    
+    const options = {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      status,
+      tags: tags ? tags.split(',') : undefined,
+      search
+    };
+    
+    const contacts = await crmService.getUserContacts(req.user.id, options);
+    
+    res.json({
+      success: true,
+      data: contacts.data,
+      pagination: contacts.pagination
+    });
+  } catch (error) {
+    console.error('Error fetching contacts:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/crm/contacts/:id
+ * @desc    Get contact by ID
+ * @access  Private
+ */
+router.get('/contacts/:id', protect, async (req, res) => {
+  try {
+    const contact = await crmService.getContactById(req.params.id);
+    
+    // Check if contact belongs to user
+    if (contact.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to access this contact'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: contact
+    });
+  } catch (error) {
+    console.error('Error fetching contact:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/crm/contacts
+ * @desc    Create new contact
+ * @access  Private
+ */
+router.post('/contacts', protect, async (req, res) => {
+  try {
+    const { name, email, phone, company, tags, notes, customFields } = req.body;
+    
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Name and email are required'
+      });
+    }
+    
+    // Create contact data
+    const contactData = {
+      user: req.user.id,
+      name,
+      email,
+      phone,
+      company,
+      tags,
+      notes,
+      customFields
+    };
+    
+    const contact = await crmService.createContact(contactData);
+    
+    res.status(201).json({
+      success: true,
+      data: contact,
+      message: 'Contact created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating contact:', error);
+    res.status(error.message.includes('already exists') ? 400 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/crm/contacts/:id
+ * @desc    Update contact
+ * @access  Private
+ */
+router.put('/contacts/:id', protect, async (req, res) => {
+  try {
+    const contact = await Contact.findById(req.params.id);
+    
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contact not found'
+      });
+    }
+    
+    // Check if contact belongs to user
+    if (contact.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update this contact'
+      });
+    }
+    
+    const updatedContact = await crmService.updateContact(req.params.id, req.body);
+    
+    res.json({
+      success: true,
+      data: updatedContact,
+      message: 'Contact updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating contact:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/crm/contacts/:id
+ * @desc    Delete contact
+ * @access  Private
+ */
+router.delete('/contacts/:id', protect, async (req, res) => {
+  try {
+    const contact = await Contact.findById(req.params.id);
+    
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contact not found'
+      });
+    }
+    
+    // Check if contact belongs to user
+    if (contact.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this contact'
+      });
+    }
+    
+    await crmService.deleteContact(req.params.id);
+    
+    res.json({
+      success: true,
+      message: 'Contact deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting contact:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/crm/contacts/:id/activity
+ * @desc    Add activity to contact
+ * @access  Private
+ */
+router.post('/contacts/:id/activity', protect, async (req, res) => {
+  try {
+    const { type, description, metadata } = req.body;
+    
+    if (!type || !description) {
+      return res.status(400).json({
+        success: false,
+        error: 'Type and description are required'
+      });
+    }
+    
+    const contact = await Contact.findById(req.params.id);
+    
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contact not found'
+      });
+    }
+    
+    // Check if contact belongs to user
+    if (contact.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to add activity to this contact'
+      });
+    }
+    
+    // Add activity
+    const activity = {
+      type,
+      description,
+      createdAt: new Date(),
+      metadata: metadata || {}
+    };
+    
+    const updatedContact = await contact.addActivity(activity);
+    
+    res.json({
+      success: true,
+      data: updatedContact,
+      message: 'Activity added successfully'
+    });
+  } catch (error) {
+    console.error('Error adding activity:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/crm/contacts/:id/purchase
+ * @desc    Record purchase for contact
+ * @access  Private
+ */
+router.post('/contacts/:id/purchase', protect, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid amount is required'
+      });
+    }
+    
+    const contact = await Contact.findById(req.params.id);
+    
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contact not found'
+      });
+    }
+    
+    // Check if contact belongs to user
+    if (contact.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to record purchase for this contact'
+      });
+    }
+    
+    // Record purchase
+    const updatedContact = await contact.recordPurchase(parseFloat(amount));
+    
+    res.json({
+      success: true,
+      data: updatedContact,
+      message: 'Purchase recorded successfully'
+    });
+  } catch (error) {
+    console.error('Error recording purchase:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/crm/automations
+ * @desc    Get user's automations
+ * @access  Private
+ */
+router.get('/automations', protect, async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, triggerType } = req.query;
+    
+    const options = {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      status,
+      triggerType
+    };
+    
+    const automations = await crmService.getUserAutomations(req.user.id, options);
+    
+    res.json({
+      success: true,
+      data: automations.data,
+      pagination: automations.pagination
+    });
+  } catch (error) {
+    console.error('Error fetching automations:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/crm/automations
+ * @desc    Create new automation
+ * @access  Private
+ */
+router.post('/automations', protect, async (req, res) => {
+  try {
+    const { name, description, trigger, conditions, actions } = req.body;
+    
+    if (!name || !trigger || !actions || !Array.isArray(actions) || actions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Name, trigger, and at least one action are required'
+      });
+    }
+    
+    // Create automation data
+    const automationData = {
+      user: req.user.id,
+      name,
+      description,
+      trigger,
+      conditions: conditions || [],
+      actions
+    };
+    
+    const automation = await crmService.createAutomation(automationData);
+    
+    res.status(201).json({
+      success: true,
+      data: automation,
+      message: 'Automation created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating automation:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/crm/automations/:id
+ * @desc    Update automation
+ * @access  Private
+ */
+router.put('/automations/:id', protect, async (req, res) => {
+  try {
+    const automation = await Automation.findById(req.params.id);
+    
+    if (!automation) {
+      return res.status(404).json({
+        success: false,
+        error: 'Automation not found'
+      });
+    }
+    
+    // Check if automation belongs to user
+    if (automation.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to update this automation'
+      });
+    }
+    
+    const updatedAutomation = await crmService.updateAutomation(req.params.id, req.body);
+    
+    res.json({
+      success: true,
+      data: updatedAutomation,
+      message: 'Automation updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating automation:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/crm/automations/:id
+ * @desc    Delete automation
+ * @access  Private
+ */
+router.delete('/automations/:id', protect, async (req, res) => {
+  try {
+    const automation = await Automation.findById(req.params.id);
+    
+    if (!automation) {
+      return res.status(404).json({
+        success: false,
+        error: 'Automation not found'
+      });
+    }
+    
+    // Check if automation belongs to user
+    if (automation.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this automation'
+      });
+    }
+    
+    await crmService.deleteAutomation(req.params.id);
+    
+    res.json({
+      success: true,
+      message: 'Automation deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting automation:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/crm/email-templates
+ * @desc    Get user's email templates
+ * @access  Private
+ */
+router.get('/email-templates', protect, async (req, res) => {
+  try {
+    const { page = 1, limit = 10, category, search } = req.query;
+    
+    const options = {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      category,
+      search
+    };
+    
+    const templates = await crmService.getUserEmailTemplates(req.user.id, options);
+    
+    res.json({
+      success: true,
+      data: templates.data,
+      pagination: templates.pagination
+    });
+  } catch (error) {
+    console.error('Error fetching email templates:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/crm/email-templates
+ * @desc    Create new email template
+ * @access  Private
+ */
+router.post('/email-templates', protect, async (req, res) => {
+  try {
+    const { name, subject, body, category, description, isHtml, variables } = req.body;
+    
+    if (!name || !subject || !body) {
+      return res.status(400).json({
+        success: false,
+        error: 'Name, subject, and body are required'
+      });
+    }
+    
+    // Create template data
+    const templateData = {
+      user: req.user.id,
+      name,
+      subject,
+      body,
+      category: category || 'other',
+      description,
+      isHtml: isHtml !== undefined ? isHtml : true,
+      variables: variables || []
+    };
+    
+    const template = await crmService.createEmailTemplate(templateData);
+    
+    res.status(201).json({
+      success: true,
+      data: template,
+      message: 'Email template created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating email template:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
     });
   }
 });
